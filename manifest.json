@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "goTab",
-  "version": "1.0",
+  "version": "1.1.0",
   "description": "Navigate to URLs using custom keywords",
   "author": {
     "name": "James Stevens",
@@ -27,7 +27,6 @@
     "service_worker": "background.js"
   },
   "permissions": [
-    "tabs",
     "storage"
   ]
 }
