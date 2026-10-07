@@ -67,7 +67,7 @@ async function refresh() {
     state = next;
     document.getElementById('vaultTitle').textContent = state.unlocked ? 'Encrypted sync · unlocked' : state.configured ? 'Your library is locked' : 'Protect your shortcuts';
     document.getElementById('vaultDescription').textContent = state.unlocked
-      ? 'Keywords and URLs are encrypted before storage. Your unlock key stays in this browser session. Lock anytime, or fully exit the browser to lock automatically.'
+      ? 'Keywords and URLs are encrypted before storage. This device stays unlocked across browser restarts. Forget this device to remove its saved unlock key.'
       : state.configured ? 'Enter your vault passphrase to use your sites on this machine.' : 'Set up a passphrase to encrypt your library before it is stored in Chrome Sync. Your passphrase is never saved or synced.';
     vaultForm.hidden = state.unlocked;
     document.getElementById('lockBtn').hidden = !state.unlocked;
@@ -104,7 +104,7 @@ vaultForm.addEventListener('submit', async event => {
   showStatus('Unlocking and verifying your library…');
   try {
     const result = await vaultRequest(state.configured ? 'unlock' : 'setup', payload);
-    showStatus(result.warning || 'Library unlocked for this browser session.', !!result.warning);
+    showStatus(result.warning || 'Library unlocked on this device.', !!result.warning);
     await refresh();
     search.focus();
   } catch (error) { showStatus(error.message, true); document.getElementById('passphrase').focus(); }
@@ -120,9 +120,9 @@ document.getElementById('lockBtn').addEventListener('click', async () => {
 });
 search.addEventListener('input', renderMappings);
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' || (area === 'session' && changes.vaultKey)) {
-    // Clear decrypted content immediately when any tab locks the library.
-    if (area === 'session' && !changes.vaultKey.newValue) { ++revision; clearLibrary(); showStatus(''); }
+  if (area === 'sync' || (area === 'local' && changes.vaultKey)) {
+    // Clear decrypted content when another tab forgets this device.
+    if (area === 'local' && !changes.vaultKey.newValue) { ++revision; clearLibrary(); showStatus(''); }
     refresh();
   }
 });

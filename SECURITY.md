@@ -6,15 +6,15 @@ The goal is to prevent saved keywords and URLs from being readable in Chrome Syn
 
 Trusted: the installed extension code, Chrome, the operating system, and the device while unlocked. Untrusted: imported files, synced records, stored legacy data, website content, and message senders. Network destinations selected by the user are outside the vault's confidentiality boundary.
 
-No confidentiality guarantee is made against malware, a compromised browser/extension update, OS memory inspection, shoulder surfing, browser history, weak/compromised passphrases, or user-created plaintext files. Record counts, ciphertext sizes, update timing, salt, and stable opaque record IDs are visible. Authenticated encryption detects modified/reassigned records, but cannot detect deletion or replay of an older valid record by an actor controlling storage.
+The device stores the decryption key alongside locally cached ciphertext. Local browser-profile access is sufficient to decrypt the library; encryption protects synced data and backups, not this device’s storage. No confidentiality guarantee is made against malware, a compromised browser/extension update, OS memory inspection, shoulder surfing, browser history, weak/compromised passphrases, or user-created plaintext files. Record counts, ciphertext sizes, update timing, salt, and stable opaque record IDs are visible. Authenticated encryption detects modified/reassigned records, but cannot detect deletion or replay of an older valid record by an actor controlling storage.
 
 ## Cryptography
 
 - Web Crypto PBKDF2-HMAC-SHA-256, 600,000 iterations, random 128-bit per-vault salt, derives 512 bits. First 256 bits are the AES key; the remaining 256 bits are a separate HMAC key.
 - AES-256-GCM with fresh random 96-bit IVs and 128-bit authentication tags for every record encryption. AAD binds the format version, vault salt, and record ID. No hand-written encryption primitives.
 - HMAC-SHA-256 of the normalized keyword provides an opaque stable record ID. An unkeyed hash would expose common keywords to dictionary guessing.
-- A known encrypted check value authenticates a passphrase. All records are authenticated and validated before unlocking. The passphrase is sent only to the extension's own worker, never stored or logged. Derived material is retained only in trusted `storage.session` so worker suspension does not require another unlock.
-- Password input fields are cleared when submitted. Locking removes the session key and clears decrypted library content in open extension pages. JavaScript cannot promise immediate or forensic zeroization of garbage-collected strings and buffers.
+- A known encrypted check value authenticates a passphrase. All records are authenticated and validated before unlocking. The passphrase is sent only to the extension's own worker, never stored or logged. Derived material is saved in trusted `storage.local` on each device and is never synced or exported. Unlock survives browser restarts, extension reloads, and disable/re-enable. Uninstalling the extension or selecting **Forget this device** removes the saved key. Existing session-only keys are migrated automatically when available.
+- Password input fields are cleared when submitted. Forgetting this device removes the saved unlock key and clears decrypted library content in open extension pages. JavaScript cannot promise immediate or forensic zeroization of garbage-collected strings and buffers.
 
 The 16-character minimum is an input floor, not an entropy guarantee. A long random passphrase and a password manager are recommended. There is no password reset or key escrow. Changing passphrase in place is not implemented; encrypted exports retain their original passphrase.
 
@@ -31,7 +31,7 @@ The 16-character minimum is an input floor, not an entropy guarantee. A long ran
 
 Setup is opt-in. Migration encrypts existing local data, checks quotas, writes ciphertext, then removes the old plaintext copy. Failed encryption/validation/writes leave local data intact. Failed migration on unlock leaves the vault usable and shows a warning. Historical copies in browser backups or on disk cannot be securely erased by the extension.
 
-Each site occupies a separate sync item. Quotas are conservatively checked before writes; Chrome remains authoritative for actual quota and rate-limit enforcement. The session salt must match the synced vault before use. A different or damaged vault fails closed instead of falling back to plaintext or Google search.
+Each site occupies a separate sync item. Quotas are conservatively checked before writes; Chrome remains authoritative for actual quota and rate-limit enforcement. The saved key salt must match the synced vault before use. A different or damaged vault fails closed instead of falling back to plaintext or Google search.
 
 Same-device mutations are serialized. Cross-device synchronization is eventually consistent, with no transaction or compare-and-swap API. Concurrent same-keyword edits, deletes versus stale edits, or simultaneous initial vault creation cannot be made atomic with this API. Initial setup must happen on one machine, with others waiting for its metadata. Independent vault creation is rejected when existing data is visible, but cannot detect an offline remote vault. Authentication failures are shown without overwriting the affected data. Keep encrypted backups.
 
@@ -39,7 +39,7 @@ The same extension ID and Chrome account with extension sync enabled are require
 
 ## Verification
 
-[Regression suite](./tests/vault.html): real Web Crypto with in-memory Chrome-storage doubles. Covers locked reads/writes, migration success and failed writes, trusted storage access, keyword normalization/prototype names, unsafe URL rejection, duplicate preservation, concurrent local adds, all-or-nothing import validation, ciphertext/AAD tampering, wrong passwords, session-key removal, cross-device decrypt simulation, encrypted exports/restore, and quota checks.
+[Regression suite](./tests/vault.html): real Web Crypto with in-memory Chrome-storage doubles. Covers locked reads/writes, migration success and failed writes, trusted storage access, keyword normalization/prototype names, unsafe URL rejection, duplicate preservation, concurrent local adds, all-or-nothing import validation, ciphertext/AAD tampering, wrong passwords, persistent-key removal and restart persistence, cross-device decrypt simulation, encrypted exports/restore, and quota checks.
 
 Browser UI verification uses simulated extension APIs. This does not validate the Chrome service-worker lifecycle, enforcement of the manifest CSP, or actual cross-machine sync. Before release, load the extension in Chrome and verify setup, browser restart, worker suspension, popup add, omnibox navigation (including background-tab disposition), import/export, lock propagation across tabs, quota failure, offline changes, and two-device delivery. This change is not an external security audit.
 

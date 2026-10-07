@@ -8,7 +8,7 @@ async function refreshState() {
     const state = await vaultRequest('state');
     fieldset.disabled = !state.unlocked || saving;
     document.getElementById('vaultHint').textContent = state.unlocked
-      ? 'Encrypted sync · unlocked for this session'
+      ? 'Encrypted sync · unlocked on this device'
       : state.configured ? 'Library locked. Open Saved sites to unlock.' : 'Open Saved sites to set up encrypted sync.';
   } catch (error) { fieldset.disabled = true; showStatus(error.message, true); }
 }
@@ -27,8 +27,8 @@ form.addEventListener('submit', async event => {
   finally { saving = false; await refreshState(); keywordInput.focus(); }
 });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' || area === 'session') {
-    if (area === 'session' && changes.vaultKey && !changes.vaultKey.newValue) { form.reset(); showStatus(''); }
+  if (area === 'sync' || area === 'local') {
+    if (area === 'local' && changes.vaultKey && !changes.vaultKey.newValue) { form.reset(); showStatus(''); }
     refreshState();
   }
 });

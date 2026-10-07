@@ -4,7 +4,7 @@
 const Vault = (() => {
   const META = 'vault.v1';
   const PREFIX = 'site.';
-  const SESSION = 'vaultKey';
+  const DEVICE_KEY = 'vaultKey';
   const encoder = new TextEncoder();
   const decoder = new TextDecoder('utf-8', { fatal: true });
   const fail = (message) => { throw new Error(message); };
@@ -94,11 +94,29 @@ const Vault = (() => {
       await ready;
       const data = await storage.sync.get(null);
       const meta = data[META] ? metadata(data[META]) : null;
-      const session = (await storage.session.get(SESSION))[SESSION];
-      if (!meta || !session || session.salt !== meta.salt) return { data, meta, key: null };
-      const raw = unb64(session.raw);
-      if (raw.length !== 64) fail('Invalid session. Lock and unlock the vault again.');
-      return { data, meta, key: await keys(raw) };
+      let saved = (await storage.local.get(DEVICE_KEY))[DEVICE_KEY];
+      let migrateSession = false;
+      // Preserve an existing unlock when upgrading from session-only storage.
+      if (!saved && meta) {
+        saved = (await storage.session.get(DEVICE_KEY))[DEVICE_KEY];
+        migrateSession = !!saved;
+      }
+      if (!meta || !saved || saved.salt !== meta.salt) return { data, meta, key: null };
+      let key;
+      try {
+        const raw = unb64(saved.raw);
+        if (raw.length !== 64) return { data, meta, key: null };
+        key = await keys(raw);
+        if (await open(meta.check, key, meta, META) !== 'goTab vault v1') return { data, meta, key: null };
+      } catch {
+        // A damaged saved key must not prevent recovery with the passphrase.
+        return { data, meta, key: null };
+      }
+      if (migrateSession) {
+        await storage.local.set({ [DEVICE_KEY]: saved });
+        await storage.session.remove(DEVICE_KEY);
+      }
+      return { data, meta, key };
     }
     function unlocked(ctx) { if (!ctx.key) fail('Open Saved sites to set up or unlock encrypted sync.'); }
     async function read(ctx) {
@@ -177,7 +195,7 @@ const Vault = (() => {
         quota(data);
         if (Object.keys(await storage.sync.get(null)).length) fail('A vault just arrived from sync. Unlock it instead.');
         await storage.sync.set(data);
-        await storage.session.set({ [SESSION]: { salt: meta.salt, raw: b64(raw) } });
+        await storage.local.set({ [DEVICE_KEY]: { salt: meta.salt, raw: b64(raw) } });
         await storage.local.remove('urlMappings');
         return state();
       },
@@ -187,12 +205,16 @@ const Vault = (() => {
         const raw = await derive(passphrase, ctx.meta);
         ctx.key = await keys(raw);
         await read(ctx); // Authenticate every record before retaining the key.
-        await storage.session.set({ [SESSION]: { salt: ctx.meta.salt, raw: b64(raw) } });
+        await storage.local.set({ [DEVICE_KEY]: { salt: ctx.meta.salt, raw: b64(raw) } });
         let warning = '';
         try { await migrate(ctx); } catch { warning = 'Unlocked, but local sites could not be migrated. They remain on this device. Check their URLs and available sync space.'; }
         return { ...await state(), warning };
       },
-      async lock() { await ready; await storage.session.remove(SESSION); },
+      async lock() {
+        await ready;
+        await storage.session.remove(DEVICE_KEY);
+        await storage.local.remove(DEVICE_KEY);
+      },
       async add({ keyword: name, url: address }) {
         name = keyword(name); address = url(address);
         const ctx = await context();
