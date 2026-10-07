@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "goTab",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Navigate to URLs using custom keywords",
   "author": {
     "name": "James Stevens",
@@ -28,5 +28,9 @@
   },
   "permissions": [
     "storage"
-  ]
+  ],
+  "minimum_chrome_version": "102",
+  "content_security_policy": {
+    "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+  }
 }

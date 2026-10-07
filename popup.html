@@ -1,146 +1,33 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <style>
-    body {
-      width: 500px;
-      padding: 20px;
-      font-family: Arial, sans-serif;
-    }
-    h1 {
-      margin-top: 0;
-      font-size: 24px;
-    }
-    label {
-      display: block;
-      margin-top: 15px;
-      margin-bottom: 5px;
-      font-weight: bold;
-    }
-    input[type="text"] {
-      width: 100%;
-      padding: 8px;
-      box-sizing: border-box;
-      font-size: 14px;
-    }
-    .button-container {
-      display: flex;
-      gap: 10px;
-      margin-top: 15px;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 14px;
-      cursor: pointer;
-      border: none;
-      border-radius: 4px;
-      color: white;
-    }
-    #addBtn {
-      background-color: #0078d4;
-      flex: 1;
-    }
-    #addBtn:hover {
-      background-color: #005a9e;
-    }
-    #exportBtn {
-      background-color: #28a745;
-      flex: 1;
-    }
-    #exportBtn:hover {
-      background-color: #1e7e34;
-    }
-    #importBtn {
-      background-color: #6c757d;
-      flex: 1;
-    }
-    #importBtn:hover {
-      background-color: #545b62;
-    }
-    #mappingList {
-      margin-top: 20px;
-    }
-    .mapping-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px;
-      margin-bottom: 10px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      background-color: #f9f9f9;
-    }
-    .mapping-info {
-      flex: 1;
-    }
-    .keyword {
-      color: #0078d4;
-      font-weight: bold;
-      font-size: 16px;
-    }
-    .url {
-      color: #666;
-      font-size: 14px;
-      word-break: break-all;
-    }
-    .delete-btn {
-      background-color: #d32f2f;
-      padding: 6px 12px;
-      font-size: 12px;
-    }
-    .delete-btn:hover {
-      background-color: #b71c1c;
-    }
-    .empty-state {
-      text-align: center;
-      color: #999;
-      padding: 20px;
-    }
-    #fileInput {
-      display: none;
-    }
-    .status-message {
-      margin-top: 10px;
-      padding: 10px;
-      border-radius: 4px;
-      text-align: center;
-      font-size: 14px;
-      display: none;
-    }
-    .status-message.success {
-      background-color: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
-    }
-    .status-message.error {
-      background-color: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
-    }
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Add a site · goTab</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="shared.js" defer></script>
+  <script src="popup.js" defer></script>
 </head>
-<body>
-  <h1>Manage Keywords</h1>
-  
-  <label for="keyword">Keyword:</label>
-  <input type="text" id="keyword" placeholder="e.g. github">
-  
-  <label for="url">URL:</label>
-  <input type="text" id="url" placeholder="https://github.com">
-  
-  <div class="button-container">
-    <button id="addBtn">Add Keyword</button>
-    <button id="exportBtn">Export</button>
-    <button id="importBtn">Import</button>
-  </div>
-
-  <input type="file" id="fileInput" accept=".json">
-  
-  <div id="statusMessage" class="status-message"></div>
-  
-  <div id="mappingList"></div>
-  
-  <script src="popup.js"></script>
+<body class="popup">
+  <main>
+    <header class="brand"><img src="icons/icon48.png" width="32" height="32" alt=""><span>goTab</span></header>
+    <h1>Your next shortcut.</h1>
+    <p class="subtitle">Save a site. Get there with a word.</p>
+    <p id="vaultHint" class="hint" role="status">Checking encrypted sync…</p>
+    <form id="addForm">
+      <fieldset id="addFields" disabled><legend class="sr-only">Add a site</legend>
+      <label for="keyword">Keyword</label>
+      <input id="keyword" name="keyword" type="text" placeholder="e.g. github" required maxlength="100" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="keywordHint">
+      <p class="hint" id="keywordHint">Use this after <kbd>go</kbd> in the address bar.</p>
+      <label for="url">Site URL</label>
+      <input id="url" name="url" type="url" placeholder="https://github.com" required autocomplete="off" maxlength="2048" aria-describedby="urlHint">
+      <p class="hint" id="urlHint">Use https:// when available. Do not include passwords or access tokens.</p>
+      <button class="primary full" id="addBtn" type="submit">Add site</button>
+      </fieldset>
+    </form>
+    <p id="statusMessage" class="status" role="status" aria-live="polite" aria-atomic="true"></p>
+    <footer><a id="manageLink" href="sites.html" target="_blank" rel="noopener">View saved sites <span aria-hidden="true">↗</span></a><span class="hint">Your shortcut library</span></footer>
+  </main>
 </body>
 </html>

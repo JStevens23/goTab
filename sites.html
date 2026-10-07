@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Saved sites · goTab</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="shared.js" defer></script>
+  <script src="sites.js" defer></script>
+</head>
+<body>
+  <main class="library">
+    <header class="brand"><img src="icons/icon48.png" width="32" height="32" alt=""><span>goTab</span><span class="badge">Your library</span></header>
+    <section aria-labelledby="pageTitle">
+      <div class="heading-row"><div><h1 id="pageTitle">Saved sites</h1><p class="subtitle">Less typing. More getting there.</p></div><p id="siteCount" class="badge" role="status">Loading…</p></div>
+      <p id="statusMessage" class="status" role="status" aria-live="polite" aria-atomic="true"></p>
+      <section class="panel vault-panel" aria-labelledby="vaultTitle">
+        <div class="heading-row"><h2 id="vaultTitle">Encrypted sync</h2><button id="lockBtn" type="button" hidden>Lock library</button></div>
+        <p id="vaultDescription">Checking your library…</p>
+        <form id="vaultForm" hidden>
+          <label for="passphrase">Vault passphrase</label>
+          <input id="passphrase" name="passphrase" type="password" required minlength="16" maxlength="1024" autocomplete="current-password" aria-describedby="passphraseHint">
+          <p id="passphraseHint" class="hint">Use a unique passphrase of at least 16 characters, ideally several random words. Keep it in your password manager: it cannot be recovered.</p>
+          <div id="confirmGroup" hidden><label for="confirmation">Confirm passphrase</label><input id="confirmation" name="confirmation" type="password" minlength="16" maxlength="1024" autocomplete="new-password"></div>
+          <p id="setupNotice" class="hint" hidden>Set up on one machine first. On other machines, sign in to the same Chrome account, enable extension sync, and wait for this vault to arrive. Creating separate vaults before sync finishes can cause conflicts. Existing local sites will be encrypted and migrated.</p>
+          <button id="unlockBtn" class="primary" type="submit">Unlock library</button>
+        </form>
+        <div id="storageUsage" hidden><label for="usageMeter">Sync storage</label><meter id="usageMeter" min="0" max="102400" low="71680" high="92160" optimum="0" value="0"></meter><p class="hint" id="usageText"></p></div>
+        <p class="hint">Chrome handles delivery between machines when Sync is enabled. This page cannot confirm when another device has received a change.</p>
+      </section>
+      <div id="libraryPanel" class="panel" hidden>
+        <div class="toolbar"><div class="search"><label for="search">Find a site</label><input id="search" type="search" placeholder="Search keywords or URLs" autocomplete="off" aria-controls="mappingList"></div><div class="actions"><button id="importBtn" type="button">Import sites</button><button id="exportBtn" type="button">Encrypted backup</button></div></div>
+        <p class="hint">Add sites from the goTab popup. Imports add new keywords and keep existing destinations.</p>
+        <ul id="mappingList" class="site-list" aria-label="Saved sites"></ul>
+        <div id="emptyState" class="empty" hidden><h2 id="emptyTitle"></h2><p id="emptyText"></p></div>
+      </div>
+      <p class="usage">Type <kbd>go</kbd>, press <kbd>Tab</kbd>, then enter a keyword. Unlock your library first.</p>
+    </section>
+    <dialog id="importDialog" aria-labelledby="importTitle" aria-describedby="importHelp">
+      <form id="importForm">
+        <h2 id="importTitle">Import sites</h2>
+        <p id="importHelp">Choose a goTab encrypted backup or a legacy keyword-to-URL JSON file, up to 1 MB. Existing keywords will be skipped.</p>
+        <label for="fileInput">JSON file</label><input id="fileInput" type="file" accept=".json,application/json" required>
+        <label for="backupPassphrase">Backup passphrase (if from another vault)</label><input id="backupPassphrase" type="password" autocomplete="off" maxlength="1024" aria-describedby="backupHint">
+        <p id="backupHint" class="hint">Leave blank for backups from this vault. A legacy JSON file is unencrypted; delete it securely if you no longer need it.</p>
+        <p id="importStatus" class="status" role="status" aria-live="polite"></p>
+        <div class="actions"><button id="cancelImport" type="button">Cancel</button><button id="confirmImport" class="primary" type="submit">Import sites</button></div>
+      </form>
+    </dialog>
+  </main>
+</body>
+</html>

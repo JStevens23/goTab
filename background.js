@@ -1,23 +1,28 @@
-// Main handler for navigation based on the keyword-URL mapping
-chrome.omnibox.onInputEntered.addListener((text, disposition) => {
-  // Load saved keyword-URL pairs from extension storage
-  chrome.storage.local.get(['urlMappings'], (result) => {
-      const urlMappings = result.urlMappings || {};
+'use strict';
+importScripts('vault.js');
+const vault = Vault.create(chrome.storage);
+const allowedPages = ['popup.html', 'sites.html'].map(path => chrome.runtime.getURL(path));
 
-      // Retrieve the URL corresponding to the entered keyword (converted to lowercase for consistency)
-      let url = urlMappings[text.toLowerCase()];
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  // Never accept vault commands from web pages or content scripts.
+  if (sender.id !== chrome.runtime.id || !allowedPages.includes(sender.url) || !message || message.scope !== 'vault') return false;
+  vault.run(message.action, message.payload).then(
+    value => respond({ ok: true, value }),
+    error => respond({ ok: false, error: error.message || 'The operation failed. Please try again.' })
+  );
+  return true;
+});
 
-      // If no mapping exists, default to a Google search using the typed value.
-      if (!url) {
-          url = "https://www.google.com/search?q=" + encodeURIComponent(text);
-      }
-
-      // Navigate to the matched URL
-      // In the current tab if disposition is 'currentTab', otherwise open in a new tab
-      if (disposition === "currentTab") {
-          chrome.tabs.update({ url: url });
-      } else {
-          chrome.tabs.create({ url: url });
-      }
-  });
+chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
+  try {
+    const mappings = await vault.run('list');
+    const name = Vault.keyword(text);
+    if (!Object.hasOwn(mappings, name)) throw new Error('No saved site matches that keyword.');
+    const url = Vault.url(mappings[name]);
+    if (disposition === 'currentTab') await chrome.tabs.update({ url });
+    else await chrome.tabs.create({ url, active: disposition !== 'newBackgroundTab' });
+  } catch {
+    // Do not disclose unknown keywords or a locked vault's contents to a search engine.
+    await chrome.tabs.create({ url: chrome.runtime.getURL('sites.html') });
+  }
 });
