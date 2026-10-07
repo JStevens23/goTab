@@ -44,6 +44,10 @@ const Vault = (() => {
   function metadata(value) {
     if (!object(value) || value.version !== 1 || value.iterations !== 600000 || unb64(value.salt).length !== 16) fail('Unsupported or invalid vault.');
     envelope(value.check);
+    if (value.wrappedKey !== undefined || value.keySalt !== undefined) {
+      if (unb64(value.keySalt).length !== 16) fail('Invalid key salt.');
+      envelope(value.wrappedKey);
+    }
     return value;
   }
   async function keys(raw) {
@@ -53,7 +57,7 @@ const Vault = (() => {
     };
   }
   async function derive(passphrase, meta) {
-    if (typeof passphrase !== 'string' || passphrase.length < 16 || passphrase.length > 1024) fail('Use a passphrase of 16–1,024 characters.');
+    if (typeof passphrase !== 'string' || passphrase.length < 8 || passphrase.length > 1024) fail('Use a passphrase of 8–1,024 characters.');
     const material = await crypto.subtle.importKey('raw', encoder.encode(passphrase), 'PBKDF2', false, ['deriveBits']);
     return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: unb64(meta.salt), iterations: 600000 }, material, 512));
   }
@@ -69,6 +73,18 @@ const Vault = (() => {
       const bytes = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(value.iv), additionalData: aad(meta, id), tagLength: 128 }, key.aes, unb64(value.data));
       return JSON.parse(decoder.decode(bytes));
     } catch { fail('Could not unlock or verify this vault. Check the passphrase; the data may be damaged.'); }
+  }
+  async function rawForPassphrase(passphrase, meta) {
+    if (!meta.wrappedKey) return derive(passphrase, meta); // Original vault format.
+    const wrappingKey = await keys(await derive(passphrase, { salt: meta.keySalt }));
+    const raw = unb64(await open(meta.wrappedKey, wrappingKey, meta, 'vault-key'));
+    if (raw.length !== 64) fail('Invalid vault key.');
+    return raw;
+  }
+  async function wrapKey(raw, passphrase, meta) {
+    meta.keySalt = b64(crypto.getRandomValues(new Uint8Array(16)));
+    const wrappingKey = await keys(await derive(passphrase, { salt: meta.keySalt }));
+    meta.wrappedKey = await seal(b64(raw), wrappingKey, meta, 'vault-key');
   }
   async function recordId(name, key) {
     return PREFIX + Array.from(new Uint8Array(await crypto.subtle.sign('HMAC', key.hmac, encoder.encode(name))), b => b.toString(16).padStart(2, '0')).join('');
@@ -123,13 +139,17 @@ const Vault = (() => {
       unlocked(ctx);
       if (await open(ctx.meta.check, ctx.key, ctx.meta, META) !== 'goTab vault v1') fail('Invalid vault.');
       const result = Object.create(null);
+      ctx.ids = Object.create(null);
       for (const [id, value] of Object.entries(ctx.data)) {
         if (!id.startsWith(PREFIX)) continue;
         if (!/^site\.[a-f0-9]{64}$/.test(id)) fail('Invalid site record.');
         const entry = await open(value, ctx.key, ctx.meta, id);
         if (!object(entry)) fail('Invalid site record.');
         const name = keyword(entry.keyword);
-        if (await recordId(name, ctx.key) !== id) fail('Invalid site identity.');
+        // GCM authenticates the record ID via AAD. Existing IDs remain stable
+        // across key rotation; newly added records use the current HMAC key.
+        if (Object.hasOwn(result, name)) fail('Duplicate encrypted keyword.');
+        ctx.ids[name] = id;
         result[name] = url(entry.url);
       }
       return result;
@@ -138,15 +158,19 @@ const Vault = (() => {
       unlocked(ctx);
       const patch = {};
       for (const [name, address] of Object.entries(incoming)) {
-        const id = await recordId(name, ctx.key);
+        const id = ctx.ids?.[name] || await recordId(name, ctx.key);
         patch[id] = await seal({ keyword: name, url: address }, ctx.key, ctx.meta, id);
       }
-      const next = { ...ctx.data, ...patch };
+      // Recheck the affected records after encryption, since sync can deliver
+      // changes while Web Crypto is running. Chrome has no cross-device CAS.
+      const latest = await storage.sync.get(null);
+      if (JSON.stringify(latest[META]) !== JSON.stringify(ctx.meta)) fail('The synced vault changed. Unlock it again before saving.');
+      for (const id of Object.keys(patch)) {
+        if (JSON.stringify(latest[id]) !== JSON.stringify(ctx.data[id])) fail('This site changed elsewhere. Cancel and review the latest URL before trying again.');
+      }
+      const next = { ...latest, ...patch };
       if (Object.keys(next).filter(id => id.startsWith(PREFIX)).length > 500) fail('The library supports up to 500 sites, subject to available sync space.');
       quota(next);
-      // Detect a different vault arriving while an operation was in flight.
-      const latest = (await storage.sync.get(META))[META];
-      if (!latest || latest.salt !== ctx.meta.salt) fail('The synced vault changed. Unlock it again before saving.');
       if (Object.keys(patch).length) await storage.sync.set(patch);
     }
     async function migrate(ctx) {
@@ -184,7 +208,8 @@ const Vault = (() => {
         const legacy = (await storage.local.get('urlMappings')).urlMappings;
         const incoming = mappings(legacy || {});
         const meta = { version: 1, iterations: 600000, salt: b64(crypto.getRandomValues(new Uint8Array(16))) };
-        const raw = await derive(passphrase, meta);
+        const raw = crypto.getRandomValues(new Uint8Array(64));
+        await wrapKey(raw, passphrase, meta);
         const key = await keys(raw);
         meta.check = await seal('goTab vault v1', key, meta, META);
         const data = { [META]: meta };
@@ -202,7 +227,7 @@ const Vault = (() => {
       async unlock({ passphrase }) {
         const ctx = await context();
         if (!ctx.meta) fail('Wait for Chrome Sync or set up a vault on this device.');
-        const raw = await derive(passphrase, ctx.meta);
+        const raw = await rawForPassphrase(passphrase, ctx.meta);
         ctx.key = await keys(raw);
         await read(ctx); // Authenticate every record before retaining the key.
         await storage.local.set({ [DEVICE_KEY]: { salt: ctx.meta.salt, raw: b64(raw) } });
@@ -222,10 +247,49 @@ const Vault = (() => {
         if (Object.hasOwn(current, name)) fail('That keyword is already saved. Choose another keyword.');
         await write(ctx, { [name]: address });
       },
+      async update({ keyword: name, url: address, expectedUrl }) {
+        name = keyword(name); address = url(address);
+        const ctx = await context();
+        const current = await read(ctx);
+        if (!Object.hasOwn(current, name)) fail('This site was removed. Refresh the library.');
+        if (current[name] !== expectedUrl) fail('This URL changed elsewhere. Cancel and review the latest URL before editing again.');
+        await write(ctx, { [name]: address });
+      },
+      async changePassphrase({ currentPassphrase, passphrase, confirmation }) {
+        if (passphrase !== confirmation) fail('The new passphrases do not match.');
+        const ctx = await context();
+        unlocked(ctx);
+        const raw = await rawForPassphrase(currentPassphrase, ctx.meta);
+        const authenticated = { ...ctx, key: await keys(raw) };
+        const sites = await read(authenticated);
+        // Rotate both keys and reuse authenticated IDs for existing records.
+        // A single set replaces records in place without deleting the old library first.
+        raw.set(crypto.getRandomValues(new Uint8Array(64)));
+        const key = await keys(raw);
+        const meta = { version: 1, iterations: 600000, salt: ctx.meta.salt };
+        await wrapKey(raw, passphrase, meta);
+        meta.check = await seal('goTab vault v1', key, meta, META);
+        const patch = { [META]: meta };
+        for (const [name, address] of Object.entries(sites)) {
+          const id = authenticated.ids[name];
+          patch[id] = await seal({ keyword: name, url: address }, key, meta, id);
+        }
+        quota({ ...ctx.data, ...patch });
+        const latest = await storage.sync.get(null);
+        if (JSON.stringify(latest) !== JSON.stringify(ctx.data)) fail('The library changed during this operation. Please try again.');
+        await storage.sync.set(patch);
+        let warning = '';
+        try {
+          await storage.local.set({ [DEVICE_KEY]: { salt: meta.salt, raw: b64(raw) } });
+          await storage.session.remove(DEVICE_KEY);
+        } catch { warning = 'Passphrase changed. Unlock this device with the new passphrase.'; }
+        return { warning };
+      },
       async remove({ keyword: name }) {
         const ctx = await context();
         await read(ctx);
-        await storage.sync.remove(await recordId(keyword(name), ctx.key));
+        const id = ctx.ids[keyword(name)];
+        if (id) await storage.sync.remove(id);
       },
       async export() {
         const ctx = await context();
@@ -244,7 +308,7 @@ const Vault = (() => {
           if (!object(data)) fail('Invalid encrypted backup.');
           quota(data);
           const meta = metadata(data[META]);
-          const key = meta.salt === ctx.meta.salt ? ctx.key : await keys(await derive(passphrase, meta));
+          const key = JSON.stringify(meta) === JSON.stringify(ctx.meta) ? ctx.key : await keys(await rawForPassphrase(passphrase, meta));
           incoming = await read({ data, meta, key });
         } else {
           incoming = mappings(parsed);

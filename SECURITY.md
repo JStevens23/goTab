@@ -10,13 +10,14 @@ The device stores the decryption key alongside locally cached ciphertext. Local 
 
 ## Cryptography
 
-- Web Crypto PBKDF2-HMAC-SHA-256, 600,000 iterations, random 128-bit per-vault salt, derives 512 bits. First 256 bits are the AES key; the remaining 256 bits are a separate HMAC key.
+- Web Crypto PBKDF2-HMAC-SHA-256, 600,000 iterations, random 128-bit per-vault salt, derives 512 bits. For new vaults, the derived AES key wraps random data keys; a separate random HMAC key identifies records. Original vaults with directly derived data keys remain supported and are upgraded on passphrase change.
+- Passphrase changes replace all encrypted records and metadata in one local sync-storage write, after quota and concurrent-change checks. Other devices must unlock again when the change arrives. Chrome does not deliver a multi-item update atomically across devices: pause edits on other devices during rotation and retain a backup.
 - AES-256-GCM with fresh random 96-bit IVs and 128-bit authentication tags for every record encryption. AAD binds the format version, vault salt, and record ID. No hand-written encryption primitives.
-- HMAC-SHA-256 of the normalized keyword provides an opaque stable record ID. An unkeyed hash would expose common keywords to dictionary guessing.
+- HMAC-SHA-256 of the normalized keyword provides an opaque record ID when a site is added. Existing record IDs are retained across key rotation and authenticated through GCM AAD. An unkeyed hash would expose common keywords to dictionary guessing.
 - A known encrypted check value authenticates a passphrase. All records are authenticated and validated before unlocking. The passphrase is sent only to the extension's own worker, never stored or logged. Derived material is saved in trusted `storage.local` on each device and is never synced or exported. Unlock survives browser restarts, extension reloads, and disable/re-enable. Uninstalling the extension or selecting **Forget this device** removes the saved key. Existing session-only keys are migrated automatically when available.
 - Password input fields are cleared when submitted. Forgetting this device removes the saved unlock key and clears decrypted library content in open extension pages. JavaScript cannot promise immediate or forensic zeroization of garbage-collected strings and buffers.
 
-The 16-character minimum is an input floor, not an entropy guarantee. A long random passphrase and a password manager are recommended. There is no password reset or key escrow. Changing passphrase in place is not implemented; encrypted exports retain their original passphrase.
+The 8-character minimum is an input floor, not an entropy guarantee. A long random passphrase and a password manager are recommended. There is no password reset or key escrow. Changing the passphrase requires the current passphrase. It rotates both the AES and HMAC keys and re-encrypts the library while preserving opaque record IDs. Existing exported backups retain their original passphrase.
 
 ## Trust boundaries
 

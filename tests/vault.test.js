@@ -12,13 +12,14 @@
     const access = {};
     let failWrites = false;
     let failCleanup = false;
+    let failLocalWrites = false;
     const storage = Object.fromEntries(Object.keys(data).map(area => [area, {
       async setAccessLevel(value) { access[area] = value.accessLevel; },
       async get(key) { return structuredClone(key === null ? data[area] : Object.hasOwn(data[area], key) ? { [key]: data[area][key] } : {}); },
-      async set(patch) { if (area === 'sync' && failWrites) throw new Error('quota'); Object.assign(data[area], structuredClone(patch)); },
+      async set(patch) { if (area === 'local' && failLocalWrites) throw new Error('local write failed'); if (area === 'sync' && failWrites) throw new Error('quota'); Object.assign(data[area], structuredClone(patch)); },
       async remove(key) { if (area === 'local' && failCleanup) throw new Error('cleanup failed'); delete data[area][key]; }
     }]));
-    return { storage, data, access, fail: value => { failWrites = value; }, failCleanup: value => { failCleanup = value; } };
+    return { storage, data, access, fail: value => { failWrites = value; }, failCleanup: value => { failCleanup = value; }, failLocal: value => { failLocalWrites = value; } };
   }
   const passphrase = 'test only four random words 9842';
   try {
@@ -134,6 +135,62 @@
     mock.data.local = {};
     mock.data.session = {};
     assert(!(await Vault.create(mock.storage).run('state')).unlocked, 'Reinstallation requires unlock even after encrypted sync returns');
+    const editing = mockStorage();
+    const editable = Vault.create(editing.storage);
+    await rejects(() => editable.run('setup', {passphrase:'1234567', confirmation:'1234567'}), 'Seven-character passphrase rejected');
+    await editable.run('setup', {passphrase:'eight888', confirmation:'eight888'});
+    await editable.run('add', {keyword:'internal', url:'http://intranet'});
+    await editable.run('update', {keyword:'internal', url:'http://localhost:8080', expectedUrl:'http://intranet'});
+    assert((await editable.run('list')).internal === 'http://localhost:8080', 'Inline update preserves keyword and changes URL');
+    await rejects(() => editable.run('update', {keyword:'internal', url:'https://stale.example', expectedUrl:'http://intranet'}), 'Stale edit rejected without overwriting a newer URL');
+    await rejects(() => editable.run('update', {keyword:'internal', url:'javascript:alert(1)', expectedUrl:'http://localhost:8080'}), 'Unsafe edited URL rejected');
+    await rejects(() => editable.run('update', {keyword:'removed', url:'https://example.com', expectedUrl:'https://example.com'}), 'Editing a removed site cannot recreate it');
+    const oldExport = await editable.run('export');
+    const oldData = JSON.stringify(editing.data.sync);
+    await rejects(() => editable.run('changePassphrase', {currentPassphrase:'wrong888', passphrase:'newpass8', confirmation:'newpass8'}), 'Passphrase change requires correct current passphrase');
+    await rejects(() => editable.run('changePassphrase', {currentPassphrase:'eight888', passphrase:'newpass8', confirmation:'mismatch'}), 'Passphrase confirmation enforced');
+    editing.fail(true);
+    await rejects(() => editable.run('changePassphrase', {currentPassphrase:'eight888', passphrase:'newpass8', confirmation:'newpass8'}), 'Failed rotation write reported');
+    assert(JSON.stringify(editing.data.sync) === oldData, 'Failed rotation leaves original encrypted library intact');
+    editing.fail(false);
+    const remembered = structuredClone(editing.data.local.vaultKey);
+    await editable.run('changePassphrase', {currentPassphrase:'eight888', passphrase:'newpass8', confirmation:'newpass8'});
+    assert((await editable.run('list')).internal === 'http://localhost:8080', 'Passphrase rotation preserves sites and current device unlock');
+    assert(editing.data.local.vaultKey.raw !== remembered.raw, 'Passphrase change rotates encryption material');
+    assert(atob(editing.data.local.vaultKey.raw).slice(32) !== atob(remembered.raw).slice(32), 'Rotation replaces the identifier key for future keywords');
+    await editable.run('update', {keyword:'internal', url:'http://localhost:8081', expectedUrl:'http://localhost:8080'});
+    await editable.run('update', {keyword:'internal', url:'http://localhost:8080', expectedUrl:'http://localhost:8081'});
+    assert(Object.keys(await editable.run('list')).length === 1, 'Editing after key rotation reuses the existing record');
+    assert(Object.keys(editing.data.sync).sort().join() === Object.keys(oldExport.data).sort().join(), 'Rotation replaces records in place without leaving old ciphertext records');
+    const other = mockStorage(); other.data.sync = structuredClone(editing.data.sync); other.data.local.vaultKey = remembered;
+    const otherDevice = Vault.create(other.storage);
+    assert(!(await otherDevice.run('state')).unlocked, 'Other devices require new passphrase after rotation');
+    await rejects(() => otherDevice.run('unlock', {passphrase:'eight888'}), 'Old passphrase cannot unlock rotated library');
+    await otherDevice.run('unlock', {passphrase:'newpass8'});
+    assert((await otherDevice.run('list')).internal === 'http://localhost:8080', 'Eight-character new passphrase unlocks synced library');
+    await editable.run('remove', {keyword:'internal'});
+    await rejects(() => editable.run('import', {text:JSON.stringify(oldExport), passphrase:'newpass8'}), 'Older backup rejects the replacement passphrase');
+    await editable.run('import', {text:JSON.stringify(oldExport), passphrase:'eight888'});
+    assert((await editable.run('list')).internal === 'http://localhost:8080', 'Older backup restores using its original passphrase');
+    const originalSyncGet = editing.storage.sync.get;
+    const recordName = Object.keys(editing.data.sync).find(name => name.startsWith('site.'));
+    const beforeConflict = structuredClone(editing.data.sync);
+    let reads = 0;
+    editing.storage.sync.get = async key => {
+      if (key === null && ++reads === 2) delete editing.data.sync[recordName];
+      return originalSyncGet(key);
+    };
+    await rejects(() => editable.run('update', {keyword:'internal', url:'http://intranet/new', expectedUrl:'http://localhost:8080'}), 'Deletion arriving during encryption is not overwritten');
+    assert(!editing.data.sync[recordName], 'Late synced deletion remains deleted');
+    editing.storage.sync.get = originalSyncGet;
+    editing.data.sync = beforeConflict;
+    editing.failLocal(true);
+    const rotatedWithoutLocal = await editable.run('changePassphrase', {currentPassphrase:'newpass8', passphrase:'third888', confirmation:'third888'});
+    assert(!!rotatedWithoutLocal.warning, 'Local-key write failure after rotation provides recovery instructions');
+    assert(!(await editable.run('state')).unlocked, 'Stale device key cannot open rotated data after local write failure');
+    editing.failLocal(false);
+    await editable.run('unlock', {passphrase:'third888'});
+    assert((await editable.run('list')).internal === 'http://localhost:8080', 'New passphrase recovers rotation when saving local key failed');
     document.getElementById('results').textContent = `${results.length} checks passed\n\n${results.join('\n')}`;
     document.body.dataset.result = 'passed';
   } catch (error) {

@@ -8,8 +8,14 @@ const list = document.getElementById('mappingList');
 const search = document.getElementById('search');
 const vaultForm = document.getElementById('vaultForm');
 const importDialog = document.getElementById('importDialog');
+const passphraseDialog = document.getElementById('passphraseDialog');
+const drafts = new Map();
+let changingPassphrase = false;
 
 function renderMappings() {
+  const focused = document.activeElement;
+  const focusedKeyword = focused?.dataset.editKeyword;
+  const selection = focusedKeyword ? [focused.selectionStart, focused.selectionEnd] : null;
   const query = search.value.trim().toLowerCase();
   const entries = Object.entries(mappings).sort(([a], [b]) => a.localeCompare(b));
   const filtered = entries.filter(([keyword, url]) => `${keyword} ${url}`.toLowerCase().includes(query));
@@ -27,6 +33,17 @@ function renderMappings() {
     link.className = 'site-url';
     link.textContent = url;
     if (isValidUrl(url)) { link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; }
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.textContent = 'Edit';
+    edit.setAttribute('aria-label', `Edit URL for ${keyword}`);
+    edit.addEventListener('click', () => {
+      drafts.set(keyword, { value: url, expectedUrl: url, error: '', saving: false });
+      renderMappings();
+      list.querySelectorAll('input').forEach(input => {
+        if (input.dataset.editKeyword === keyword) { input.focus(); input.select(); }
+      });
+    });
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'delete';
@@ -42,9 +59,71 @@ function renderMappings() {
       } catch (error) { remove.disabled = false; showStatus(error.message, true); }
     });
     info.append(title, link);
-    item.append(info, remove);
+    if (drafts.has(keyword)) {
+      link.hidden = true;
+      const draft = drafts.get(keyword);
+      const form = document.createElement('form');
+      form.className = 'inline-editor';
+      const input = document.createElement('input');
+      input.type = 'url';
+      input.required = true;
+      input.maxLength = 2048;
+      input.autocomplete = 'off';
+      input.value = draft.value;
+      input.dataset.editKeyword = keyword;
+      input.setAttribute('aria-label', `URL for ${keyword}`);
+      input.disabled = draft.saving;
+      input.addEventListener('input', () => { draft.value = input.value; });
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const save = document.createElement('button');
+      save.type = 'submit'; save.className = 'primary'; save.textContent = 'Save'; save.disabled = draft.saving;
+      const cancel = document.createElement('button');
+      cancel.type = 'button'; cancel.textContent = 'Cancel'; cancel.disabled = draft.saving;
+      const cancelEdit = () => {
+        if (draft.saving) return;
+        drafts.delete(keyword); renderMappings();
+        list.querySelectorAll('button').forEach(button => {
+          if (button.getAttribute('aria-label') === `Edit URL for ${keyword}`) button.focus();
+        });
+      };
+      cancel.addEventListener('click', cancelEdit);
+      input.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); cancelEdit(); } });
+      const error = document.createElement('p');
+      error.className = 'status error'; error.setAttribute('role', 'alert'); error.textContent = draft.error;
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (draft.saving) return;
+        draft.saving = true; draft.error = ''; renderMappings();
+        try {
+          await vaultRequest('update', { keyword, url: draft.value.trim(), expectedUrl: draft.expectedUrl });
+          drafts.delete(keyword);
+          await refresh();
+          showStatus('URL updated.');
+        } catch (failure) { draft.error = failure.message; }
+        finally {
+          draft.saving = false; renderMappings();
+          // Restore keyboard focus after replacing the row on save or failure.
+          list.querySelectorAll('input, button').forEach(control => {
+            if (drafts.has(keyword) ? control.dataset.editKeyword === keyword
+              : control.getAttribute('aria-label') === `Edit URL for ${keyword}`) control.focus();
+          });
+        }
+      });
+      actions.append(save, cancel); form.append(input, actions, error); info.append(form);
+      item.append(info);
+    } else {
+      const actions = document.createElement('div'); actions.className = 'actions'; actions.append(edit, remove);
+      item.append(info, actions);
+    }
     list.append(item);
   }
+  if (focusedKeyword) list.querySelectorAll('input').forEach(input => {
+    if (input.dataset.editKeyword === focusedKeyword && !input.disabled) {
+      input.focus();
+      if (selection && selection[0] !== null) input.setSelectionRange(...selection);
+    }
+  });
   document.getElementById('emptyState').hidden = filtered.length > 0;
   document.getElementById('emptyTitle').textContent = entries.length ? 'No matching sites' : 'Your shortcuts start here';
   document.getElementById('emptyText').textContent = entries.length ? 'Try another keyword or part of a URL.' : 'Open the goTab extension popup to add your first site, or import a backup.';
@@ -52,11 +131,13 @@ function renderMappings() {
 
 function clearLibrary() {
   mappings = {};
+  drafts.clear();
   list.replaceChildren();
   search.value = '';
   document.getElementById('libraryPanel').hidden = true;
   document.getElementById('siteCount').textContent = 'Locked';
   if (importDialog.open) importDialog.close();
+  if (passphraseDialog.open && !changingPassphrase) passphraseDialog.close();
 }
 
 async function refresh() {
@@ -71,6 +152,7 @@ async function refresh() {
       : state.configured ? 'Enter your vault passphrase to use your sites on this machine.' : 'Set up a passphrase to encrypt your library before it is stored in Chrome Sync. Your passphrase is never saved or synced.';
     vaultForm.hidden = state.unlocked;
     document.getElementById('lockBtn').hidden = !state.unlocked;
+    document.getElementById('changePassphraseBtn').hidden = !state.unlocked;
     document.getElementById('confirmGroup').hidden = state.configured;
     document.getElementById('confirmation').required = !state.configured;
     document.getElementById('passphrase').autocomplete = state.configured ? 'current-password' : 'new-password';
@@ -123,7 +205,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'sync' || (area === 'local' && changes.vaultKey)) {
     // Clear decrypted content when another tab forgets this device.
     if (area === 'local' && !changes.vaultKey.newValue) { ++revision; clearLibrary(); showStatus(''); }
-    refresh();
+    if (!changingPassphrase) refresh();
   }
 });
 // A tab restored from the back-forward cache must recheck the lock state.
@@ -169,5 +251,39 @@ document.getElementById('exportBtn').addEventListener('click', async event => {
     showStatus('Encrypted backup created. Keep your vault passphrase to restore it.');
   } catch (error) { showStatus(error.message, true); }
   finally { button.disabled = false; }
+});
+document.getElementById('changePassphraseBtn').addEventListener('click', () => passphraseDialog.showModal());
+document.getElementById('cancelPassphrase').addEventListener('click', () => passphraseDialog.close());
+passphraseDialog.addEventListener('cancel', event => { if (changingPassphrase) event.preventDefault(); });
+passphraseDialog.addEventListener('close', () => {
+  document.getElementById('changePassphraseForm').reset();
+  document.getElementById('changePassphraseStatus').textContent = '';
+});
+document.getElementById('changePassphraseForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (busy) return;
+  busy = true; changingPassphrase = true;
+  const status = document.getElementById('changePassphraseStatus');
+  const payload = {
+    currentPassphrase: document.getElementById('currentPassphrase').value,
+    passphrase: document.getElementById('newPassphrase').value,
+    confirmation: document.getElementById('confirmNewPassphrase').value
+  };
+  event.target.reset();
+  document.getElementById('savePassphrase').disabled = true;
+  document.getElementById('cancelPassphrase').disabled = true;
+  status.textContent = 'Updating your passphrase…';
+  try {
+    const result = await vaultRequest('changePassphrase', payload);
+    passphraseDialog.close();
+    showStatus(result.warning || 'Passphrase changed. Use the new passphrase on your other devices.', !!result.warning);
+  } catch (error) { status.textContent = error.message; }
+  finally {
+    payload.currentPassphrase = ''; payload.passphrase = ''; payload.confirmation = '';
+    busy = false; changingPassphrase = false;
+    document.getElementById('savePassphrase').disabled = false;
+    document.getElementById('cancelPassphrase').disabled = false;
+    await refresh();
+  }
 });
 refresh();

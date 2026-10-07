@@ -11,7 +11,7 @@ Save sites with custom keywords and open them from Chrome's address bar. Add sit
 ## Setup and sync
 
 1. Open **View saved sites** from the popup.
-2. Choose a passphrase of at least 16 characters and select **Enable encrypted sync**. Existing shortcuts are migrated automatically.
+2. Choose a passphrase of at least 8 characters and select **Enable encrypted sync**. Existing shortcuts are migrated automatically.
 3. On other machines, use the same Chrome account and extension ID with extension sync enabled. Wait for the vault to sync, then unlock it with the same passphrase.
 
 Unlock once per device. It stays unlocked across browser restarts and extension reloads until you uninstall the extension or select **Forget this device**.
@@ -23,15 +23,17 @@ Unpacked installations can have different extension IDs. Automatic sync requires
 - Add a keyword and an `https://` or `http://` URL in the popup. Internal addresses such as `http://intranet` and `http://localhost:8080` are supported.
 - Type `go`, press Tab, enter the keyword, and press Enter.
 - Search and remove shortcuts in **Saved sites**. Unknown keywords open the library.
-- Duplicate keywords are rejected. Remove the existing shortcut before replacing its destination.
+- Select **Edit** next to a site to update its URL inline, then **Save** or **Cancel**. Duplicate keywords are rejected.
 
 The library supports up to 500 sites within Chrome's 100 KB sync limit. URL length and encryption overhead affect capacity; the storage meter shows current usage.
 
+Use **Change passphrase** in Saved sites to choose a new passphrase. Enter the current passphrase and confirm the new one. Other devices need the new passphrase after syncing; existing backups keep their original passphrase.
+
 ## Backups
 
-- **Encrypted backup** exports your library as JSON.
+- **Export to JSON** exports your library as JSON.
 - **Import sites** accepts encrypted backups and legacy keyword-to-URL JSON files up to 1 MB. Existing keywords are preserved.
-- When importing a backup from another vault, enter that backup's passphrase.
+- When importing a backup from another vault or an earlier passphrase, enter that backup's passphrase.
 
 ## Storage
 

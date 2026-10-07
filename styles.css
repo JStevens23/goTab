@@ -61,3 +61,9 @@ dialog::backdrop { background: #101529a8; }
 dialog label { margin-top: 18px; }
 dialog .actions { justify-content: flex-end; }
 dialog input[type="file"] { font-size: 13px; }
+
+.inline-editor { margin-top: 8px; }
+.inline-editor .actions { margin-top: 10px; }
+.site-item > .actions { align-self: center; flex-wrap: wrap; }
+.vault-panel .heading-row { flex-wrap: wrap; gap: 10px; }
+.vault-panel .heading-row h2 { flex: 1 1 180px; }
