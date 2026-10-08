@@ -191,6 +191,18 @@
     editing.failLocal(false);
     await editable.run('unlock', {passphrase:'third888'});
     assert((await editable.run('list')).internal === 'http://localhost:8080', 'New passphrase recovers rotation when saving local key failed');
+    const onboarding = mockStorage();
+    const newcomer = Vault.create(onboarding.storage);
+    assert((await newcomer.run('state')).onboardingChoice === null, 'Fresh install does not assume a new or existing user');
+    await newcomer.run('chooseOnboarding', {choice:'existing'});
+    assert((await Vault.create(onboarding.storage).run('state')).onboardingChoice === 'existing', 'Existing-user choice survives popup and worker restarts');
+    await rejects(() => newcomer.run('setup', {passphrase:'fresh888', confirmation:'fresh888'}), 'Existing-user waiting path cannot create a replacement vault');
+    assert(Object.keys(onboarding.data.sync).length === 0, 'Waiting for sync writes no new vault');
+    onboarding.data.sync = structuredClone(editing.data.sync);
+    assert((await newcomer.run('state')).configured, 'Late synced vault becomes available without new setup');
+    await newcomer.run('unlock', {passphrase:'third888'});
+    assert((await newcomer.run('list')).internal === 'http://localhost:8080', 'Existing passphrase unlocks sites on the second machine');
+    await rejects(() => newcomer.run('chooseOnboarding', {choice:'unknown'}), 'Invalid onboarding choices rejected');
     document.getElementById('results').textContent = `${results.length} checks passed\n\n${results.join('\n')}`;
     document.body.dataset.result = 'passed';
   } catch (error) {

@@ -10,6 +10,7 @@ const vaultForm = document.getElementById('vaultForm');
 const importDialog = document.getElementById('importDialog');
 const passphraseDialog = document.getElementById('passphraseDialog');
 const drafts = new Map();
+const onboarding = createOnboarding({ refresh, onReady: () => search.focus() });
 let changingPassphrase = false;
 
 function renderMappings() {
@@ -146,18 +147,9 @@ async function refresh() {
     const next = await vaultRequest('state');
     if (request !== revision) return;
     state = next;
-    document.getElementById('vaultTitle').textContent = state.unlocked ? 'Encrypted sync · unlocked' : state.configured ? 'Your library is locked' : 'Protect your shortcuts';
-    document.getElementById('vaultDescription').textContent = state.unlocked
-      ? 'Keywords and URLs are encrypted before storage. This device stays unlocked across browser restarts. Forget this device to remove its saved unlock key.'
-      : state.configured ? 'Enter your vault passphrase to use your sites on this machine.' : 'Set up a passphrase to encrypt your library before it is stored in Chrome Sync. Your passphrase is never saved or synced.';
-    vaultForm.hidden = state.unlocked;
+    onboarding.render(state);
     document.getElementById('lockBtn').hidden = !state.unlocked;
     document.getElementById('changePassphraseBtn').hidden = !state.unlocked;
-    document.getElementById('confirmGroup').hidden = state.configured;
-    document.getElementById('confirmation').required = !state.configured;
-    document.getElementById('passphrase').autocomplete = state.configured ? 'current-password' : 'new-password';
-    document.getElementById('setupNotice').hidden = state.configured;
-    document.getElementById('unlockBtn').textContent = state.configured ? 'Unlock library' : 'Enable encrypted sync';
     document.getElementById('storageUsage').hidden = !state.configured;
     document.getElementById('usageMeter').value = state.bytes;
     document.getElementById('usageText').textContent = `${(state.bytes / 1024).toFixed(1)} of 100 KB used · up to 500 sites, depending on URL length.`;
@@ -175,24 +167,6 @@ async function refresh() {
   }
 }
 
-vaultForm.addEventListener('submit', async event => {
-  event.preventDefault();
-  if (busy || !state) return;
-  busy = true;
-  const button = document.getElementById('unlockBtn');
-  button.disabled = true;
-  const payload = { passphrase: document.getElementById('passphrase').value, confirmation: document.getElementById('confirmation').value };
-  vaultForm.reset();
-  showStatus('Unlocking and verifying your library…');
-  try {
-    const result = await vaultRequest(state.configured ? 'unlock' : 'setup', payload);
-    showStatus(result.warning || 'Library unlocked on this device.', !!result.warning);
-    await refresh();
-    search.focus();
-  } catch (error) { showStatus(error.message, true); document.getElementById('passphrase').focus(); }
-  finally { payload.passphrase = ''; payload.confirmation = ''; busy = false; button.disabled = false; }
-});
-
 document.getElementById('lockBtn').addEventListener('click', async () => {
   ++revision;
   clearLibrary();
@@ -202,9 +176,9 @@ document.getElementById('lockBtn').addEventListener('click', async () => {
 });
 search.addEventListener('input', renderMappings);
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' || (area === 'local' && changes.vaultKey)) {
+  if (area === 'sync' || (area === 'local' && (changes.vaultKey || changes.onboardingChoice))) {
     // Clear decrypted content when another tab forgets this device.
-    if (area === 'local' && !changes.vaultKey.newValue) { ++revision; clearLibrary(); showStatus(''); }
+    if (area === 'local' && changes.vaultKey && !changes.vaultKey.newValue) { ++revision; clearLibrary(); showStatus(''); }
     if (!changingPassphrase) refresh();
   }
 });

@@ -67,3 +67,8 @@ dialog input[type="file"] { font-size: 13px; }
 .site-item > .actions { align-self: center; flex-wrap: wrap; }
 .vault-panel .heading-row { flex-wrap: wrap; gap: 10px; }
 .vault-panel .heading-row h2 { flex: 1 1 180px; }
+
+.onboarding-choices { display: grid; gap: 10px; max-width: 460px; }
+.sync-steps { padding-left: 22px; color: var(--muted); }
+.sync-steps li + li { margin-top: 8px; }
+.back-button { margin-top: 16px; font-size: 13px; }

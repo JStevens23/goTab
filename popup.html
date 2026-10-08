@@ -7,15 +7,43 @@
   <title>Add a site · goTab</title>
   <link rel="stylesheet" href="styles.css">
   <script src="shared.js" defer></script>
+  <script src="onboarding.js" defer></script>
   <script src="popup.js" defer></script>
 </head>
 <body class="popup">
   <main>
     <header class="brand"><img src="icons/icon48.png" width="32" height="32" alt=""><span>goTab</span></header>
-    <h1>Your next shortcut.</h1>
-    <p class="subtitle">Save a site. Get there with a word.</p>
+    <section id="onboardingPanel" hidden aria-labelledby="vaultTitle">
+      <h1 id="vaultTitle">Welcome to goTab</h1>
+      <p id="vaultDescription" class="subtitle"></p>
+        <div id="onboardingChoices" class="onboarding-choices" hidden>
+          <button id="newLibraryBtn" class="primary full" type="button">Create a new library</button>
+          <button id="existingLibraryBtn" class="full" type="button">Connect an existing library</button>
+        </div>
+        <div id="syncWaiting" hidden>
+          <ol class="sync-steps">
+            <li>Sign in to the same Chrome account on both devices.</li>
+            <li>Enable extension sync in Chrome settings.</li>
+            <li>Use the same goTab extension ID. Unpacked installations may have different IDs.</li>
+          </ol>
+          <p class="hint">This page updates automatically when your library arrives. Your passphrase unlocks the library; it does not download it.</p>
+          <button id="checkSyncBtn" type="button">Check again</button>
+        </div>
+        <form id="vaultForm" hidden>
+          <fieldset id="authFields"><legend class="sr-only">Library passphrase</legend>
+            <label for="passphrase">Vault passphrase</label>
+            <input id="passphrase" name="passphrase" type="password" required minlength="8" maxlength="1024" autocomplete="current-password" aria-describedby="passphraseHint">
+            <p id="passphraseHint" class="hint"></p>
+            <div id="confirmGroup" hidden><label for="confirmation">Confirm passphrase</label><input id="confirmation" name="confirmation" type="password" minlength="8" maxlength="1024" autocomplete="new-password"></div>
+            <button id="unlockBtn" class="primary full" type="submit">Unlock library</button>
+          </fieldset>
+        </form>
+        <button id="onboardingBack" class="back-button" type="button" hidden>Back to setup options</button>
+    </section>
+    <div id="addHeading" hidden><h1>Your next shortcut.</h1>
+    <p class="subtitle">Save a site. Get there with a word.</p></div>
     <p id="vaultHint" class="hint" role="status">Checking encrypted sync…</p>
-    <form id="addForm">
+    <form id="addForm" hidden>
       <fieldset id="addFields" disabled><legend class="sr-only">Add a site</legend>
       <label for="keyword">Keyword</label>
       <input id="keyword" name="keyword" type="text" placeholder="e.g. github" required maxlength="100" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="keywordHint">

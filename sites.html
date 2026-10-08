@@ -8,6 +8,7 @@
   <title>Saved sites · goTab</title>
   <link rel="stylesheet" href="styles.css">
   <script src="shared.js" defer></script>
+  <script src="onboarding.js" defer></script>
   <script src="sites.js" defer></script>
 </head>
 <body>
@@ -19,14 +20,29 @@
       <section class="panel vault-panel" aria-labelledby="vaultTitle">
         <div class="heading-row"><h2 id="vaultTitle">Encrypted sync</h2><button id="changePassphraseBtn" type="button" hidden>Change passphrase</button><button id="lockBtn" type="button" hidden>Forget this device</button></div>
         <p id="vaultDescription">Checking your library…</p>
+        <div id="onboardingChoices" class="onboarding-choices" hidden>
+          <button id="newLibraryBtn" class="primary full" type="button">Create a new library</button>
+          <button id="existingLibraryBtn" class="full" type="button">Connect an existing library</button>
+        </div>
+        <div id="syncWaiting" hidden>
+          <ol class="sync-steps">
+            <li>Sign in to the same Chrome account on both devices.</li>
+            <li>Enable extension sync in Chrome settings.</li>
+            <li>Use the same goTab extension ID. Unpacked installations may have different IDs.</li>
+          </ol>
+          <p class="hint">This page updates automatically when your library arrives. Your passphrase unlocks the library; it does not download it.</p>
+          <button id="checkSyncBtn" type="button">Check again</button>
+        </div>
         <form id="vaultForm" hidden>
-          <label for="passphrase">Vault passphrase</label>
-          <input id="passphrase" name="passphrase" type="password" required minlength="8" maxlength="1024" autocomplete="current-password" aria-describedby="passphraseHint">
-          <p id="passphraseHint" class="hint">Use a unique passphrase of at least 8 characters, ideally several random words. Keep it in your password manager: it cannot be recovered.</p>
-          <div id="confirmGroup" hidden><label for="confirmation">Confirm passphrase</label><input id="confirmation" name="confirmation" type="password" minlength="8" maxlength="1024" autocomplete="new-password"></div>
-          <p id="setupNotice" class="hint" hidden>Set up on one machine first. On other machines, sign in to the same Chrome account, enable extension sync, and wait for this vault to arrive. Creating separate vaults before sync finishes can cause conflicts. Existing local sites will be encrypted and migrated.</p>
-          <button id="unlockBtn" class="primary" type="submit">Unlock library</button>
+          <fieldset id="authFields"><legend class="sr-only">Library passphrase</legend>
+            <label for="passphrase">Vault passphrase</label>
+            <input id="passphrase" name="passphrase" type="password" required minlength="8" maxlength="1024" autocomplete="current-password" aria-describedby="passphraseHint">
+            <p id="passphraseHint" class="hint"></p>
+            <div id="confirmGroup" hidden><label for="confirmation">Confirm passphrase</label><input id="confirmation" name="confirmation" type="password" minlength="8" maxlength="1024" autocomplete="new-password"></div>
+            <button id="unlockBtn" class="primary full" type="submit">Unlock library</button>
+          </fieldset>
         </form>
+        <button id="onboardingBack" class="back-button" type="button" hidden>Back to setup options</button>
         <div id="storageUsage" hidden><label for="usageMeter">Sync storage</label><meter id="usageMeter" min="0" max="102400" low="71680" high="92160" optimum="0" value="0"></meter><p class="hint" id="usageText"></p></div>
         <p class="hint">Chrome handles delivery between machines when Sync is enabled. This page cannot confirm when another device has received a change.</p>
       </section>

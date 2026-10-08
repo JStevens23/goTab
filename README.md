@@ -10,9 +10,9 @@ Save sites with custom keywords and open them from Chrome's address bar. Add sit
 
 ## Setup and sync
 
-1. Open **View saved sites** from the popup.
-2. Choose a passphrase of at least 8 characters and select **Enable encrypted sync**. Existing shortcuts are migrated automatically.
-3. On other machines, use the same Chrome account and extension ID with extension sync enabled. Wait for the vault to sync, then unlock it with the same passphrase.
+1. Open the goTab popup and choose **Create a new library** if you are new, or **Connect an existing library** on another machine.
+2. For a new library, create a passphrase of at least 8 characters, then add your first site directly in the popup. Existing local shortcuts are migrated automatically.
+3. To connect an existing library, use the same Chrome account and extension ID with extension sync enabled. When the library arrives, unlock it in the popup with your existing passphrase. No new passphrase is needed.
 
 Unlock once per device. It stays unlocked across browser restarts and extension reloads until you uninstall the extension or select **Forget this device**.
 

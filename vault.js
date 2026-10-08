@@ -196,13 +196,20 @@ const Vault = (() => {
     }
     async function state() {
       const ctx = await context();
-      return { configured: !!ctx.meta, unlocked: !!ctx.key, bytes: quota(ctx.data), count: Object.keys(ctx.data).filter(id => id.startsWith(PREFIX)).length, legacy: !!(await storage.local.get('urlMappings')).urlMappings };
+      return { configured: !!ctx.meta, unlocked: !!ctx.key, bytes: quota(ctx.data), count: Object.keys(ctx.data).filter(id => id.startsWith(PREFIX)).length, onboardingChoice: (await storage.local.get('onboardingChoice')).onboardingChoice || null, legacy: !!(await storage.local.get('urlMappings')).urlMappings };
     }
     const api = {
       state,
+      async chooseOnboarding({ choice }) {
+        await ready;
+        if (![null, 'new', 'existing'].includes(choice)) fail('Invalid setup choice.');
+        await storage.local.set({ onboardingChoice: choice });
+      },
       async list() { return read(await context()); },
       async setup({ passphrase, confirmation }) {
         if (passphrase !== confirmation) fail('The passphrases do not match.');
+        await ready;
+        if ((await storage.local.get('onboardingChoice')).onboardingChoice === 'existing') fail('Waiting for your existing library. No new library was created.');
         const ctx = await context();
         if (ctx.meta || Object.keys(ctx.data).length) fail('Sync data already exists. Wait for sync and unlock the existing vault.');
         const legacy = (await storage.local.get('urlMappings')).urlMappings;
